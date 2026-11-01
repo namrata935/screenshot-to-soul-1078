@@ -5,6 +5,8 @@ export type EventKind = "Physical" | "Cyber" | "Correlated";
 export const riskLevel = (score: number): Severity =>
   score >= 100 ? "Critical" : score >= 70 ? "High" : score >= 35 ? "Medium" : "Low";
 
+const at = <T,>(a: readonly T[], i: number): T => a[((i % a.length) + a.length) % a.length]!;
+
 export const CORRELATION_WINDOW_SECONDS = 60;
 export const CORRELATION_MULTIPLIER = 1.5;
 /** Combined risk: sum of both scores, multiplied by 1.5 when events fall within 60s. */
@@ -32,14 +34,14 @@ const risks = [92, 64, 138, 28, 55, 47, 112, 74, 81, 33];
 const statuses: Incident["status"][] = ["Open", "Investigating", "Resolved"];
 
 export const incidents: Incident[] = Array.from({ length: 24 }, (_, i) => {
-  const [type, kind, source] = types[i % types.length];
-  const risk = Math.max(12, risks[i % risks.length] - Math.floor(i / 10) * 9);
+  const [type, kind, source] = at(types, i);
+  const risk = Math.max(12, at(risks, i) - Math.floor(i / 10) * 9);
   const m = 59 - i * 2;
   return {
     id: `INC-${(2041 - i).toString()}`,
     time: `2026-11-01 ${String(16 - Math.floor(i / 6)).padStart(2, "0")}:${String(((m % 60) + 60) % 60).padStart(2, "0")}:${String((i * 17) % 60).padStart(2, "0")}`,
     type, kind, source, risk, severity: riskLevel(risk),
-    status: statuses[i % 3],
+    status: at(statuses, i),
     description: `${type} reported from ${source}. Automated triage assigned risk score ${risk}.`,
   };
 });
@@ -49,9 +51,9 @@ export const cameras: Camera[] = [
   ["Lobby Main", "Building A · Ground"], ["Gate 1", "North Perimeter"], ["Parking B", "Level -1"],
   ["Server Room", "Building A · L3"], ["Loading Dock", "East Wing"], ["Corridor 4", "Building B · L2"],
   ["Perimeter West", "Fence Line"], ["Reception", "Building B · Ground"],
-].map(([name, location], i) => ({
-  id: `CAM-${String([14, 2, 3, 11, 5, 21, 7, 19][i]).padStart(3, "0")}`,
-  name, location, online: i !== 4 && i !== 6, source: i % 3 === 0 ? "Webcam" : "RTSP", fps: [30, 25, 24, 30, 0, 25, 0, 30][i],
+].map(([name = "", location = ""], i) => ({
+  id: `CAM-${String(at([14, 2, 3, 11, 5, 21, 7, 19], i)).padStart(3, "0")}`,
+  name, location, online: i !== 4 && i !== 6, source: i % 3 === 0 ? "Webcam" : "RTSP", fps: at([30, 25, 24, 30, 0, 25, 0, 30], i),
 }));
 
 export const threatDistribution = [
@@ -66,7 +68,7 @@ export const hourly = Array.from({ length: 12 }, (_, i) => ({
 }));
 
 export const trends = {
-  daily: hourly.map((h, i) => ({ label: h.t, incidents: h.physical + h.cyber, risk: 30 + ((i * 13) % 60), physical: h.physical, cyber: h.cyber })),
+  daily: hourly.map((h, i) => ({ label: h.t, incidents: h.physical! + h.cyber!, risk: 30 + ((i * 13) % 60), physical: h.physical!, cyber: h.cyber! })),
   weekly: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => ({
     label: d, incidents: [62, 71, 58, 84, 96, 44, 39][i], risk: [48, 55, 51, 68, 79, 42, 36][i],
     physical: [28, 30, 22, 35, 41, 20, 18][i], cyber: [34, 41, 36, 49, 55, 24, 21][i],
@@ -81,7 +83,7 @@ export const severityDist = [
   { name: "Low", value: 42 }, { name: "Medium", value: 31 }, { name: "High", value: 19 }, { name: "Critical", value: 8 },
 ];
 
-export const cameraStats = cameras.map((c, i) => ({ camera: c.id, events: [34, 21, 18, 27, 4, 15, 9, 22][i] }));
+export const cameraStats = cameras.map((c, i) => ({ camera: c.id, events: at([34, 21, 18, 27, 4, 15, 9, 22], i) }));
 
 export const cyberKpis = [
   { label: "Failed Logins", value: 1284, delta: "+12%" },
@@ -132,10 +134,10 @@ const hex = (seed: number) => {
   return s;
 };
 export const evidence = Array.from({ length: 10 }, (_, i) => ({
-  id: `EV-${3381 - i}`, incident: incidents[i].id,
-  file: i % 2 ? `${incidents[i].source.split(" ")[0].toLowerCase()}_snapshot_${i}.jpg` : `clip_${incidents[i].id.toLowerCase()}.mp4`,
+  id: `EV-${3381 - i}`, incident: at(incidents, i).id,
+  file: i % 2 ? `${(at(incidents, i).source.split(" ")[0] ?? "cam").toLowerCase()}_snapshot_${i}.jpg` : `clip_${at(incidents, i).id.toLowerCase()}.mp4`,
   kind: (i % 2 ? "Snapshot" : "Video") as "Snapshot" | "Video",
-  time: incidents[i].time, hash: hex(i + 7), verified: i % 4 !== 3,
+  time: at(incidents, i).time, hash: hex(i + 7), verified: i % 4 !== 3,
 }));
 
 export const auditLogs = Array.from({ length: 30 }, (_, i) => ({
