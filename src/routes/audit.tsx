@@ -14,7 +14,7 @@ export const Route = createFileRoute("/audit")({
   component: Audit,
 });
 
-const users = ["All", ...Array.from(new Set(auditLogs.map((l) => l.user)))];
+const users: string[] = ["All", ...Array.from(new Set(auditLogs.map((l) => l.user)))];
 
 function Audit() {
   const [q, setQ] = useState("");

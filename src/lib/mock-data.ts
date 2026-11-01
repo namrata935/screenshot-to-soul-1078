@@ -98,8 +98,8 @@ export const cyberEvents = Array.from({ length: 14 }, (_, i) => {
   const sev: Severity[] = ["Medium", "High", "Medium", "Critical", "High", "Critical", "High"];
   return {
     time: `16:${String(58 - i * 3).padStart(2, "0")}:${String((i * 23) % 60).padStart(2, "0")}`,
-    event: ev, ip: ["185.220.101.4", "45.155.205.9", "10.0.4.22", "91.240.118.2", "203.0.113.77", "198.51.100.12", "172.16.9.40"][i % 7],
-    severity: sev[i % 7], status: i % 3 === 0 ? "Blocked" : i % 3 === 1 ? "Monitoring" : "Mitigated",
+    event: ev!, ip: ["185.220.101.4", "45.155.205.9", "10.0.4.22", "91.240.118.2", "203.0.113.77", "198.51.100.12", "172.16.9.40"][i % 7],
+    severity: at(sev, i), status: i % 3 === 0 ? "Blocked" : i % 3 === 1 ? "Monitoring" : "Mitigated",
   };
 });
 

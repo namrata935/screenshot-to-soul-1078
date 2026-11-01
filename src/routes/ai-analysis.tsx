@@ -38,13 +38,15 @@ function AiAnalysis() {
 
   const pick = (f?: File) => {
     if (!f) return;
-    if (!f.type.startsWith("video/")) return toast.error("Please choose a video file");
+    // eslint-disable-next-line
+
+    if (!f.type.startsWith("video/")) { toast.error("Please choose a video file"); return; }
     if (file) URL.revokeObjectURL(file.url);
     setFile({ url: URL.createObjectURL(f), name: f.name }); setResult(null);
   };
 
   const analyze = (ready: boolean) => {
-    if (!ready) return toast.error("Start the camera or upload a video first");
+    if (!ready) { toast.error("Start the camera or upload a video first"); return; }
     setBusy(true); setResult(null);
     const ms = 900 + Math.round(Math.random() * 900);
     setTimeout(() => {

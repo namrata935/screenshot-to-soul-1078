@@ -23,7 +23,7 @@ function Cameras() {
   const [form, setForm] = useState({ name: "", location: "", source: "RTSP" as Camera["source"], url: "" });
 
   const add = () => {
-    if (!form.name.trim()) return toast.error("Camera name is required");
+    if (!form.name.trim()) { toast.error("Camera name is required"); return; }
     const id = `CAM-${String(100 + list.length).padStart(3, "0")}`;
     setList((l) => [...l, { id, name: form.name, location: form.location || "Unassigned", online: true, source: form.source, fps: 25 }]);
     setAdding(false); setForm({ name: "", location: "", source: "RTSP", url: "" });

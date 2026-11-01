@@ -14,7 +14,7 @@ export const Route = createFileRoute("/evidence")({
 });
 
 function Evidence() {
-  const [sel, setSel] = useState(evidence[0]);
+  const [sel, setSel] = useState(evidence[0]!);
   const [checking, setChecking] = useState<string | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
 
