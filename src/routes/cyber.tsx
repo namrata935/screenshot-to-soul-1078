@@ -30,7 +30,7 @@ function Cyber() {
     <>
       <PageHeader title="Cybersecurity Monitor" subtitle="Network, identity and device threat telemetry" />
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-        {cyberKpis.map((k, i) => <KpiCard key={k.label} label={k.label} value={k.value.toLocaleString()} icon={icons[i] ?? Activity} tone={tones[i]} hint={`${k.delta} vs yesterday`} />)}
+        {cyberKpis.map((k, i) => <KpiCard key={k.label} label={k.label} value={k.value.toLocaleString()} icon={icons[i] ?? Activity} tone={tones[i] ?? "primary"} hint={`${k.delta} vs yesterday`} />)}
       </div>
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
         <Panel title="Live event feed">

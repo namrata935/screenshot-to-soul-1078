@@ -94,11 +94,11 @@ export const cyberKpis = [
 ];
 
 export const cyberEvents = Array.from({ length: 14 }, (_, i) => {
-  const ev = ["Failed SSH login", "Unauthorized API call", "Port scan 1-1024", "RTSP auth bypass attempt", "Anomalous egress traffic", "Firmware hash mismatch", "Credential stuffing"][i % 7];
+  const ev = at(["Failed SSH login", "Unauthorized API call", "Port scan 1-1024", "RTSP auth bypass attempt", "Anomalous egress traffic", "Firmware hash mismatch", "Credential stuffing"], i);
   const sev: Severity[] = ["Medium", "High", "Medium", "Critical", "High", "Critical", "High"];
   return {
     time: `16:${String(58 - i * 3).padStart(2, "0")}:${String((i * 23) % 60).padStart(2, "0")}`,
-    event: ev!, ip: ["185.220.101.4", "45.155.205.9", "10.0.4.22", "91.240.118.2", "203.0.113.77", "198.51.100.12", "172.16.9.40"][i % 7],
+    event: ev!, ip: at(["185.220.101.4", "45.155.205.9", "10.0.4.22", "91.240.118.2", "203.0.113.77", "198.51.100.12", "172.16.9.40"], i),
     severity: at(sev, i), status: i % 3 === 0 ? "Blocked" : i % 3 === 1 ? "Monitoring" : "Mitigated",
   };
 });
@@ -142,8 +142,8 @@ export const evidence = Array.from({ length: 10 }, (_, i) => ({
 
 export const auditLogs = Array.from({ length: 30 }, (_, i) => ({
   time: `2026-11-01 ${String(16 - Math.floor(i / 5)).padStart(2, "0")}:${String((59 - i * 7 + 600) % 60).padStart(2, "0")}:${String((i * 31) % 60).padStart(2, "0")}`,
-  user: ["j.mehta", "a.rao", "system", "s.khan", "admin"][i % 5],
-  action: ["Login", "Viewed camera CAM-014", "Exported evidence EV-3379", "Resolved INC-2038", "Changed RTSP config", "Failed login", "Verified hash EV-3381", "Removed camera CAM-099"][i % 8],
-  ip: ["10.0.1.12", "10.0.1.45", "127.0.0.1", "10.0.2.8", "185.220.101.4"][i % 5],
+  user: at(["j.mehta", "a.rao", "system", "s.khan", "admin"], i),
+  action: at(["Login", "Viewed camera CAM-014", "Exported evidence EV-3379", "Resolved INC-2038", "Changed RTSP config", "Failed login", "Verified hash EV-3381", "Removed camera CAM-099"], i),
+  ip: at(["10.0.1.12", "10.0.1.45", "127.0.0.1", "10.0.2.8", "185.220.101.4"], i),
   result: (i % 8 === 5 || i % 11 === 4 ? "Failure" : "Success") as "Success" | "Failure",
 }));
