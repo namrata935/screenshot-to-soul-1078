@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "model:serve": "KERAS_HOME=/tmp/.keras /Library/Frameworks/Python.framework/Versions/3.12/bin/python3 model_server.py"
   },
   "overrides": {
     "rolldown": "1.2.1"
