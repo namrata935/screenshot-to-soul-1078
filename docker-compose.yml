@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vms
+      POSTGRES_PASSWORD: vms
+      POSTGRES_DB: cyber_analytics
+    ports:
+      - "5432:5432"
+    volumes:
+      - cyber_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vms -d cyber_analytics"]
+      interval: 5s
+      timeout: 5s
+      retries: 8
+
+  cyber-analytics:
+    build: ./cyber_analytics
+    ports:
+      - "8001:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://vms:vms@postgres:5432/cyber_analytics
+      CYBER_HMAC_SECRET: ${CYBER_HMAC_SECRET:-dev-hmac-change-me}
+      CYBER_ADMIN_API_KEY: ${CYBER_ADMIN_API_KEY:-dev-admin-key}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  cyber_pg:

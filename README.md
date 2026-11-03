@@ -22,3 +22,32 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+Visual threat inference (existing Flask server, unchanged):
+
+```sh
+npm run model:serve
+```
+
+## Cybersecurity analytics (platform monitoring)
+
+This service watches the VMS itself (logins, video access, camera heartbeats). It does **not** replace the CNN-LSTM Flask model or the React dashboard.
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | SQLAlchemy URL (PostgreSQL). Default in Compose: `postgresql+psycopg://vms:vms@postgres:5432/cyber_analytics` |
+| `CYBER_HMAC_SECRET` | HMAC key used to pseudonymize IP addresses in `security_events` |
+| `CYBER_ADMIN_API_KEY` | Sent as `X-Admin-Key` for admin-only reads |
+
+```sh
+docker compose up --build
+# API: http://localhost:8001  (Postgres: localhost:5432)
+
+cd cyber_analytics
+python -m pip install -r requirements.txt
+alembic upgrade head
+uvicorn app.main:app --reload --port 8001
+python -m pytest
+```
+
+Ingest an event from another service: `POST /api/v1/security-events`. Auth/video/camera hook routes under `/api/v1/auth`, `/api/v1/videos`, `/api/v1/cameras` are logged automatically by middleware.
