@@ -69,4 +69,10 @@ python scripts/generate_synthetic_logs.py
 * **Output**: Normalized anomaly score $\in [0.0, 1.0]$ and human-readable explanation of contributing deviations (e.g. *"Login at 03:23, user normally active 09:00-17:00, from a never-seen device"*).
 * **Synthetic Telemetry Generator**: `scripts/generate_synthetic_logs.py` simulates normal operator/guard personas and injects off-hours compromise, mass video scraping, and rogue IP attacks to evaluate precision and recall.
 
+### Identity Graph (Phase 4)
+* **NetworkX MultiGraph Model**: Tracks `user <-> device <-> IP <-> camera` entity relationships (`USED_DEVICE`, `USED_IP`, `NETWORK_LINK`, `ACCESSED_CAMERA`).
+* **Endpoint**: `GET /api/v1/graph/identity` (requires `X-Admin-Key`)
+  * Supports `user_id` parameter to isolate an individual's operational blast radius (2-hop ego subgraph).
+  * Supports `camera_id` parameter to inspect which users, devices, and IPs interacted with a sensitive camera.
+
 Ingest an event from another service: `POST /api/v1/security-events`. Auth/video/camera hook routes under `/api/v1/auth`, `/api/v1/videos`, `/api/v1/cameras` are logged automatically by middleware.

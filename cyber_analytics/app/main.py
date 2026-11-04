@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.middleware import SecurityEventMiddleware
-from app.routers import events, vms_hooks
+from app.routers import events, graph, vms_hooks
 
 app = FastAPI(
     title="Secure VMS Cybersecurity Analytics",
@@ -20,6 +20,7 @@ app.add_middleware(
 app.add_middleware(SecurityEventMiddleware)
 
 app.include_router(events.router)
+app.include_router(graph.router)
 app.include_router(vms_hooks.router)
 
 
