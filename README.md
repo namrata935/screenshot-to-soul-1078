@@ -75,4 +75,13 @@ python scripts/generate_synthetic_logs.py
   * Supports `user_id` parameter to isolate an individual's operational blast radius (2-hop ego subgraph).
   * Supports `camera_id` parameter to inspect which users, devices, and IPs interacted with a sensitive camera.
 
+### Alerts API & Threat Correlation (Phase 5)
+* **Persistent Storage**: `cyber_alerts` table in PostgreSQL with indexes on `(status, created_at)`, `(severity, created_at)`, `(rule_id, created_at)`, `(camera_id, created_at)`, `(user_id, created_at)`.
+* **Endpoints** (Admin-role only, requiring `X-Admin-Key`):
+  * `GET /api/v1/alerts`: List and filter alerts by status, severity, rule_id, user_id, or camera_id with pagination.
+  * `GET /api/v1/alerts/{alert_id}`: Fetch single alert details.
+  * `PATCH /api/v1/alerts/{alert_id}/status`: Transition status between `open`, `acknowledged`, and `resolved`.
+  * `GET /api/v1/alerts/stats/summary`: Aggregated metrics (open/ack/resolved, counts by severity, top suspicious IPs and users).
+  * `GET /api/v1/signals/correlate`: Real-time cyber signal provider (`get_cyber_signals`) for risk-scoring correlation with AI visual threat detections.
+
 Ingest an event from another service: `POST /api/v1/security-events`. Auth/video/camera hook routes under `/api/v1/auth`, `/api/v1/videos`, `/api/v1/cameras` are logged automatically by middleware.

@@ -7,9 +7,32 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.detection.alerts_store import alert_store
-from app.detection.rules import Alert, evaluate_rules
-from app.models import EventType, SecurityEvent
+from app.detection.rules import Alert, Severity, evaluate_rules
+from app.models import CyberAlert, EventType, SecurityEvent
 from app.privacy import device_fingerprint, hmac_hex, mask_ip, sanitize_metadata
+
+
+def persist_alert(db: Session, alert: Alert) -> CyberAlert:
+    """Persist an in-memory Alert dataclass instance into the cyber_alerts table."""
+    severity_val = alert.severity.value if isinstance(alert.severity, Severity) else str(alert.severity)
+    row = CyberAlert(
+        rule_id=alert.rule_id,
+        severity=severity_val,
+        status="open",
+        entity_type=alert.entity_type,
+        entity_id=alert.entity_id,
+        user_id=alert.user,
+        ip_address=alert.ip,
+        camera_id=alert.camera,
+        confidence=float(alert.confidence),
+        explanation=alert.reason,
+        raw_evidence=alert.evidence,
+        created_at=alert.created_at,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 def log_security_event(
@@ -58,6 +81,8 @@ def log_security_event(
         alerts = evaluate_rules(db, row)
         if alerts:
             alert_store.add_many(alerts)
+            for a in alerts:
+                persist_alert(db, a)
         setattr(row, "_triggered_alerts", alerts)
     else:
         setattr(row, "_triggered_alerts", [])
