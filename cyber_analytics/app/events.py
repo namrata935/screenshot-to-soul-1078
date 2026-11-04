@@ -6,6 +6,8 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.detection.alerts_store import alert_store
+from app.detection.rules import Alert, evaluate_rules
 from app.models import EventType, SecurityEvent
 from app.privacy import device_fingerprint, hmac_hex, mask_ip, sanitize_metadata
 
@@ -23,8 +25,12 @@ def log_security_event(
     success: bool = True,
     metadata: dict[str, Any] | None = None,
     timestamp: datetime | None = None,
+    run_detection: bool = True,
 ) -> SecurityEvent:
-    """Persist one security event. IPs are HMAC'd; secrets in metadata are stripped."""
+    """Persist one security event. IPs are HMAC'd; secrets in metadata are stripped.
+
+    Optionally evaluates detection rules and stores any triggered alerts.
+    """
     event_type_value = event_type.value if isinstance(event_type, EventType) else str(event_type)
     ua = (user_agent or "")[:512]
     raw_ip = ip_address or "unknown"
@@ -47,4 +53,13 @@ def log_security_event(
     db.add(row)
     db.commit()
     db.refresh(row)
+
+    if run_detection:
+        alerts = evaluate_rules(db, row)
+        if alerts:
+            alert_store.add_many(alerts)
+        setattr(row, "_triggered_alerts", alerts)
+    else:
+        setattr(row, "_triggered_alerts", [])
+
     return row

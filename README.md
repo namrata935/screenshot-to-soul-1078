@@ -38,6 +38,16 @@ This service watches the VMS itself (logins, video access, camera heartbeats). I
 | `DATABASE_URL` | SQLAlchemy URL (PostgreSQL). Default in Compose: `postgresql+psycopg://vms:vms@postgres:5432/cyber_analytics` |
 | `CYBER_HMAC_SECRET` | HMAC key used to pseudonymize IP addresses in `security_events` |
 | `CYBER_ADMIN_API_KEY` | Sent as `X-Admin-Key` for admin-only reads |
+| `RULE_BRUTE_FORCE_THRESHOLD` | Max failed logins before alerting (default: `5`) |
+| `RULE_BRUTE_FORCE_WINDOW_SECONDS` | Sliding window for brute force detection in seconds (default: `60`) |
+| `RULE_CREDENTIAL_STUFFING_THRESHOLD_USERNAMES` | Distinct accounts targeted before alerting (default: `3`) |
+| `RULE_CREDENTIAL_STUFFING_WINDOW_SECONDS` | Sliding window for credential stuffing in seconds (default: `120`) |
+| `RULE_IMPOSSIBLE_ACCESS_WINDOW_SECONDS` | Window for concurrent logins from different IPs in seconds (default: `300`) |
+| `RULE_MASS_EXPORT_THRESHOLD` | Video views/downloads threshold before alerting (default: `10`) |
+| `RULE_MASS_EXPORT_WINDOW_SECONDS` | Sliding window for mass export in seconds (default: `600`) |
+| `RULE_PRIVILEGE_ABUSE_THRESHOLD` | Repeated permission denied responses before alerting (default: `3`) |
+| `RULE_PRIVILEGE_ABUSE_WINDOW_SECONDS` | Sliding window for privilege abuse in seconds (default: `300`) |
+| `RULE_CAMERA_HEARTBEAT_TIMEOUT_SECONDS` | Maximum allowed silence before camera tampering alert (default: `180`) |
 
 ```sh
 docker compose up --build
