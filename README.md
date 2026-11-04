@@ -58,6 +58,15 @@ python -m pip install -r requirements.txt
 alembic upgrade head
 uvicorn app.main:app --reload --port 8001
 python -m pytest
+
+# Run ML anomaly detection evaluation on realistic synthetic telemetry:
+python scripts/generate_synthetic_logs.py
 ```
+
+### ML Anomaly Detection (Phase 3)
+* **Model**: scikit-learn `IsolationForest` combined with a per-user statistical baseline (`UserBaseline`).
+* **Features**: `login_hour`, `day_of_week`, `is_new_device`, `is_new_ip`, `request_rate`, `videos_accessed_per_hour`.
+* **Output**: Normalized anomaly score $\in [0.0, 1.0]$ and human-readable explanation of contributing deviations (e.g. *"Login at 03:23, user normally active 09:00-17:00, from a never-seen device"*).
+* **Synthetic Telemetry Generator**: `scripts/generate_synthetic_logs.py` simulates normal operator/guard personas and injects off-hours compromise, mass video scraping, and rogue IP attacks to evaluate precision and recall.
 
 Ingest an event from another service: `POST /api/v1/security-events`. Auth/video/camera hook routes under `/api/v1/auth`, `/api/v1/videos`, `/api/v1/cameras` are logged automatically by middleware.
