@@ -504,3 +504,4 @@ export function IdentityGraphVisualizer({
     </div>
   );
 }
+
