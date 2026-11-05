@@ -410,7 +410,7 @@ const MOCK_CAMERA_HEALTH: CameraCyberHealth[] = [
 // API SERVICE IMPLEMENTATION
 // ============================================================================
 
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 2000): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 4000): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -427,7 +427,7 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
 export async function checkBackendStatus(): Promise<BackendStatus> {
   const url = `${BACKEND_BASE_URL.replace(/\/api\/v1\/?$/, "")}/health`;
   try {
-    const res = await fetchWithTimeout(url, { method: "GET" }, 1500);
+    const res = await fetchWithTimeout(url, { method: "GET" }, 2500);
     if (res.ok) {
       return {
         online: true,
@@ -436,7 +436,7 @@ export async function checkBackendStatus(): Promise<BackendStatus> {
         checked_at: new Date().toISOString(),
       };
     }
-  } catch {
+  } catch (err) {
     // Offline or network error
   }
   return {
@@ -469,14 +469,15 @@ export async function fetchAlerts(params?: {
   try {
     const res = await fetchWithTimeout(url, {
       headers: { "X-Admin-Key": ADMIN_API_KEY, Accept: "application/json" },
-    }, 2000);
+    }, 4000);
 
     if (res.ok) {
       const liveAlerts = await res.json();
+      console.log(`[CyberAPI] Live backend alerts fetched: ${liveAlerts.length} records`);
       return { alerts: liveAlerts, isBackendLive: true };
     }
-  } catch {
-    // Fall back to local mock data
+  } catch (err) {
+    console.warn("[CyberAPI] Live alerts fetch failed, falling back to local dataset:", err);
   }
 
   // Filter in-memory mock alerts

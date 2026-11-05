@@ -29,19 +29,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# In Starlette, middlewares execute in reverse order of addition.
+# Adding SecurityEventMiddleware first, then CORSMiddleware last ensures
+# CORSMiddleware is the OUTERMOST layer, properly handling OPTIONS preflights
+# and attaching CORS headers to all responses.
+app.add_middleware(SecurityEventMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8080",
-        "http://localhost:5173",
-        "http://127.0.0.1:8080",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origin_regex=r"^https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(SecurityEventMiddleware)
 
 app.include_router(events.router)
 app.include_router(alerts.router)

@@ -224,3 +224,4 @@ def seed_database_if_empty(db: Session) -> None:
 
     db.commit()
     logger.info("Successfully seeded database with security events and cyber alerts.")
+
