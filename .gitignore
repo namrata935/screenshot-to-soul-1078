@@ -43,3 +43,4 @@ cyber_analytics/.env
 *.njsproj
 *.sln
 *.sw?
+*.db
