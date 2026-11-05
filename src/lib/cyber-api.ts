@@ -694,10 +694,11 @@ export async function fetchIdentityGraph(params?: {
 }
 
 /** Fetch camera cyber health and status telemetry */
-export async function fetchCameraCyberHealth(): Promise<CameraCyberHealth[]> {
-  // Sync with current mock alerts in case statuses have changed
+export async function fetchCameraCyberHealth(liveAlerts?: CyberAlert[]): Promise<CameraCyberHealth[]> {
+  const alertsPool = liveAlerts && liveAlerts.length > 0 ? liveAlerts : mockAlertsStore;
+
   return MOCK_CAMERA_HEALTH.map((cam) => {
-    const camAlerts = mockAlertsStore.filter(
+    const camAlerts = alertsPool.filter(
       (a) => a.camera_id === cam.camera_id && a.status !== "resolved"
     );
     const isCritical = camAlerts.some((a) => a.severity === "critical");
@@ -710,6 +711,11 @@ export async function fetchCameraCyberHealth(): Promise<CameraCyberHealth[]> {
       status = "offline";
     } else if (isWarning || camAlerts.length > 0) {
       status = "warning";
+    }
+
+    // If alerts are resolved, camera recovers to healthy unless hardcoded offline
+    if (camAlerts.length === 0 && cam.camera_id !== "CAM-005") {
+      status = "healthy";
     }
 
     return {
