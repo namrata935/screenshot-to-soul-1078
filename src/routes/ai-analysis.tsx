@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   Camera,
   Upload,
@@ -22,6 +22,10 @@ import {
   Radio,
   Layers,
   Sparkles,
+  Vault,
+  ExternalLink,
+  Lock,
+  Copy,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Panel, StatusDot, SeverityBadge } from "@/components/vms/ui";
@@ -30,6 +34,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { pageHead } from "@/lib/meta";
+import { logViolenceEvidence, type EvidenceItem, type Severity } from "@/lib/mock-data";
 import {
   checkModelServer,
   runModelPrediction,
@@ -52,10 +57,12 @@ export const Route = createFileRoute("/ai-analysis")({
 });
 
 function AiAnalysis() {
+  const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
   const uploadVideoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const liveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastLoggedViolenceRef = useRef<number>(0);
 
   const [camOn, setCamOn] = useState(false);
   const [liveStreamActive, setLiveStreamActive] = useState(false);
@@ -67,6 +74,8 @@ function AiAnalysis() {
   const [liveResult, setLiveResult] = useState<SingleFrameResult | null>(null);
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
   const [threshold, setThreshold] = useState<number>(0.5);
+  const [activeTab, setActiveTab] = useState<string>("webcam");
+  const [liveEvidenceList, setLiveEvidenceList] = useState<EvidenceItem[]>([]);
 
   const [modelStatus, setModelStatus] = useState<ModelStatus>({
     status: "offline",
@@ -178,6 +187,29 @@ function AiAnalysis() {
             if (firstInc?.description) {
               toast.warning(`🚨 ${firstInc.description}`, { id: "live-threat-toast" });
             }
+
+            // Check if violence was detected in the live frame
+            const violenceInc = liveRes.incidents.find(
+              (i) => i.type.includes("violence") || i.type.includes("attack")
+            );
+            if (violenceInc && Date.now() - lastLoggedViolenceRef.current > 3500) {
+              lastLoggedViolenceRef.current = Date.now();
+              const frameSnap = liveRes.annotatedFrame || b64;
+              const ev = logViolenceEvidence({
+                source: "CAM-014 Lobby (Live AI)",
+                snapshotData: frameSnap,
+                description: violenceInc.description,
+                severity: violenceInc.severity as Severity,
+              });
+              setLiveEvidenceList((prev) => [ev, ...prev]);
+              toast.error("🚨 Live Violence Logged to Evidence Vault & Live Tab!", {
+                description: `${ev.id} stamped with SHA-256 hash (${ev.hash.slice(0, 10)}...).`,
+                action: {
+                  label: "View in Vault",
+                  onClick: () => navigate({ to: "/evidence" }),
+                },
+              });
+            }
           }
         }
       } catch {
@@ -270,6 +302,31 @@ function AiAnalysis() {
 
       if (pred.isThreat || (pred.incidents && pred.incidents.length > 0)) {
         toast.error("⚠️ THREAT DETECTED: Surveillance AI identified security incidents!");
+
+        // Auto-archive violence evidence if detected in evaluated sequence
+        const violenceInc = pred.incidents?.find(
+          (i) => i.type.includes("violence") || i.type.includes("attack")
+        ) || (pred.threatType.toLowerCase().includes("violence")
+          ? { type: "violence_detected", description: pred.threatType, severity: pred.severity || "High" }
+          : null);
+
+        if (violenceInc) {
+          const snap = pred.annotatedFrame || frames[frames.length - 1];
+          const ev = logViolenceEvidence({
+            source: file ? file.name : "CAM-014 Lobby Sequence",
+            snapshotData: snap,
+            description: violenceInc.description,
+            severity: (violenceInc.severity || "High") as Severity,
+          });
+          setLiveEvidenceList((prev) => [ev, ...prev]);
+          toast.error("🚨 Physical Violence Logged to Live Evidence & Vault!", {
+            description: `${ev.id}: SHA-256 sealed evidentiary snapshot archived.`,
+            action: {
+              label: "View in Vault",
+              onClick: () => navigate({ to: "/evidence" }),
+            },
+          });
+        }
       } else {
         toast.success("✅ Nominal sequence: Area verified secure.");
       }
@@ -312,8 +369,20 @@ function AiAnalysis() {
 
   const dispatchIncident = () => {
     if (!result) return;
-    toast.success("Security Incident dispatched to SOC Command Center (ID: INC-9942)", {
-      description: `Dispatched with severity ${result.severity || "High"}, ${result.incidentsCount || 1} alert(s), and verified video evidence.`,
+    const snap = result.annotatedFrame || capturedFrames[capturedFrames.length - 1];
+    const ev = logViolenceEvidence({
+      source: file ? file.name : "CAM-014 Lobby",
+      snapshotData: snap,
+      description: result.threatType || "Dispatched security threat incident",
+      severity: (result.severity || "High") as Severity,
+    });
+    setLiveEvidenceList((prev) => [ev, ...prev]);
+    toast.success(`Security Incident dispatched to SOC Command Center (${ev.incident})`, {
+      description: `Dispatched with severity ${result.severity || "High"} and archived to Evidence Vault (${ev.id}).`,
+      action: {
+        label: "View in Vault",
+        onClick: () => navigate({ to: "/evidence" }),
+      },
     });
   };
 
@@ -423,10 +492,13 @@ function AiAnalysis() {
         {/* Left Column: Video Capture, Feed & Live Overlay */}
         <Panel className="xl:col-span-2">
           <Tabs
-            defaultValue="webcam"
-            onValueChange={() => {
-              setResult(null);
-              setLiveResult(null);
+            value={activeTab}
+            onValueChange={(val) => {
+              setActiveTab(val);
+              if (val !== "evidence") {
+                setResult(null);
+                setLiveResult(null);
+              }
             }}
           >
             <TabsList>
@@ -435,6 +507,14 @@ function AiAnalysis() {
               </TabsTrigger>
               <TabsTrigger value="upload">
                 <Upload className="size-4" /> Upload Surveillance Clip
+              </TabsTrigger>
+              <TabsTrigger value="evidence" className="relative">
+                <Vault className="size-4" /> Live Evidence Tab
+                {liveEvidenceList.length > 0 && (
+                  <span className="ml-1.5 rounded-full bg-critical px-1.5 py-0.2 font-mono text-[10px] font-bold text-destructive-foreground">
+                    {liveEvidenceList.length}
+                  </span>
+                )}
               </TabsTrigger>
             </TabsList>
 
@@ -609,6 +689,93 @@ function AiAnalysis() {
                   </span>
                 )}
               </div>
+            </TabsContent>
+
+            {/* Live Evidence Tab */}
+            <TabsContent value="evidence" className="mt-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+                <div>
+                  <h3 className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
+                    <Vault className="size-4 text-cyan" />
+                    Live Forensic Evidence Vault
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Real-time evidentiary snapshots timestamped &amp; SHA-256 hashed whenever violence or altercations are identified.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => navigate({ to: "/evidence" })}
+                  className="text-xs gap-1.5 font-mono"
+                >
+                  Open Evidence Vault <ExternalLink className="size-3" />
+                </Button>
+              </div>
+
+              {liveEvidenceList.length === 0 ? (
+                <div className="rounded-md border border-dashed border-border/70 p-12 text-center text-muted-foreground">
+                  <ShieldCheck className="mx-auto mb-2 size-8 text-cyan/60" />
+                  <p className="font-medium text-foreground">No Live Violence Evidence Captured Yet</p>
+                  <p className="mt-1 text-xs max-w-md mx-auto">
+                    When the AI Engine flags violence, struggles, or physical altercations, evidentiary snapshots are automatically stamped with a cryptographic SHA-256 seal and archived here and in the Digital Evidence Vault.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {liveEvidenceList.map((item) => (
+                    <div key={item.id} className="rounded-lg border bg-panel/70 p-3 space-y-2.5">
+                      <div className="relative aspect-video overflow-hidden rounded border border-border/50 bg-black">
+                        {item.snapshotData ? (
+                          <img src={item.snapshotData} alt={item.file} className="size-full object-contain" />
+                        ) : (
+                          <div className="flex size-full items-center justify-center font-mono text-xs text-muted-foreground">
+                            SNAPSHOT ARCHIVED
+                          </div>
+                        )}
+                        <span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded bg-critical/90 px-1.5 py-0.5 font-mono text-[9px] text-white font-semibold">
+                          VIOLENCE DETECTED
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-mono font-bold text-cyan">{item.id}</span>
+                        <span className="font-mono text-[10px] text-muted-foreground">{item.time}</span>
+                      </div>
+
+                      <div className="text-[11px] text-muted-foreground truncate">
+                        Linked: <span className="font-mono text-foreground">{item.incident}</span> · {item.file}
+                      </div>
+
+                      <div className="break-all rounded bg-terminal p-1.5 font-mono text-[10px] text-cyan border border-border/40">
+                        SHA-256: {item.hash.slice(0, 24)}...
+                      </div>
+
+                      <div className="flex gap-2 pt-1">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="flex-1 text-xs h-7"
+                          onClick={() => navigate({ to: "/evidence" })}
+                        >
+                          View in Vault
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            navigator.clipboard.writeText(item.hash);
+                            toast.success("SHA-256 hash copied");
+                          }}
+                        >
+                          Copy Hash
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </TabsContent>
           </Tabs>
 
@@ -888,6 +1055,32 @@ function AiAnalysis() {
                   <div>· Context Detectors: SmartFall + SmartTheft</div>
                   <div>· Deep Sequence Classifier: cctvmodel.keras</div>
                 </div>
+              </div>
+
+              <div className="pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-xs gap-1.5 border-critical/40 text-critical hover:bg-critical/10"
+                  onClick={() => {
+                    const ev = logViolenceEvidence({
+                      source: "CAM-014 Lobby (Simulation)",
+                      description: "Deep learning LSTM model detected physical violence / altercation pattern in surveillance sequence.",
+                      severity: "Critical",
+                    });
+                    setLiveEvidenceList((prev) => [ev, ...prev]);
+                    setActiveTab("evidence");
+                    toast.error("🚨 Simulated Violence Triggered & Logged to Vault", {
+                      description: `${ev.id} created with SHA-256 seal.`,
+                      action: {
+                        label: "View in Vault",
+                        onClick: () => navigate({ to: "/evidence" }),
+                      },
+                    });
+                  }}
+                >
+                  <AlertTriangle className="size-3.5" /> Test Simulated Violence Alert
+                </Button>
               </div>
             </div>
           </Panel>

@@ -8,6 +8,8 @@ export interface IncidentItem {
   timestamp?: number;
   bbox?: number[];
   object_id?: string;
+  evidence_sha256?: string;
+  crypto_seal?: string;
 }
 
 export interface DetectedObject {

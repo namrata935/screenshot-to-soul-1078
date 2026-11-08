@@ -1,3 +1,5 @@
+import { computeIncidentHashSync } from "./incident-crypto";
+
 // DEMO DATA — all values are static and simulated.
 export type Severity = "Low" | "Medium" | "High" | "Critical";
 export type EventKind = "Physical" | "Cyber" | "Correlated";
@@ -16,6 +18,11 @@ export const correlatedRisk = (physical: number, cyber: number, deltaSeconds: nu
 export interface Incident {
   id: string; time: string; type: string; kind: EventKind; source: string;
   severity: Severity; risk: number; status: "Open" | "Investigating" | "Resolved"; description: string;
+  hash: string;
+  prevHash: string;
+  signature: string;
+  evidenceRef?: string | undefined;
+  tampered?: boolean | undefined;
 }
 
 const types: [string, EventKind, string][] = [
@@ -33,16 +40,36 @@ const types: [string, EventKind, string][] = [
 const risks = [92, 64, 138, 28, 55, 47, 112, 74, 81, 33];
 const statuses: Incident["status"][] = ["Open", "Investigating", "Resolved"];
 
+let runningPrevHash = "0000000000000000000000000000000000000000000000000000000000000000";
+
 export const incidents: Incident[] = Array.from({ length: 24 }, (_, i) => {
   const [type, kind, source] = at(types, i);
   const risk = Math.max(12, at(risks, i) - Math.floor(i / 10) * 9);
   const m = 59 - i * 2;
+  const id = `INC-${(2041 - i).toString()}`;
+  const time = `2026-11-01 ${String(16 - Math.floor(i / 6)).padStart(2, "0")}:${String(((m % 60) + 60) % 60).padStart(2, "0")}:${String((i * 17) % 60).padStart(2, "0")}`;
+  const severity = riskLevel(risk);
+  const description = `${type} reported from ${source}. Automated triage assigned risk score ${risk}.`;
+  
+  const prevHash = runningPrevHash;
+  const hash = computeIncidentHashSync({ id, time, type, source, severity, description, prevHash });
+  runningPrevHash = hash;
+
   return {
-    id: `INC-${(2041 - i).toString()}`,
-    time: `2026-11-01 ${String(16 - Math.floor(i / 6)).padStart(2, "0")}:${String(((m % 60) + 60) % 60).padStart(2, "0")}:${String((i * 17) % 60).padStart(2, "0")}`,
-    type, kind, source, risk, severity: riskLevel(risk),
+    id,
+    time,
+    type,
+    kind,
+    source,
+    risk,
+    severity,
     status: at(statuses, i),
-    description: `${type} reported from ${source}. Automated triage assigned risk score ${risk}.`,
+    description,
+    hash,
+    prevHash,
+    signature: `ED25519-SIG-${hash.slice(0, 16)}...${hash.slice(-8)}`,
+    evidenceRef: i < 10 ? `EV-${3381 - i}` : undefined,
+    tampered: false,
   };
 });
 
@@ -133,12 +160,105 @@ const hex = (seed: number) => {
   for (let i = 0; i < 64; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += (x % 16).toString(16); }
   return s;
 };
-export const evidence = Array.from({ length: 10 }, (_, i) => ({
+export interface EvidenceItem {
+  id: string;
+  incident: string;
+  file: string;
+  kind: "Snapshot" | "Video";
+  time: string;
+  hash: string;
+  verified: boolean;
+  snapshotData?: string | undefined;
+  tags?: string[] | undefined;
+}
+
+export const evidence: EvidenceItem[] = Array.from({ length: 10 }, (_, i) => ({
   id: `EV-${3381 - i}`, incident: at(incidents, i).id,
   file: i % 2 ? `${(at(incidents, i).source.split(" ")[0] ?? "cam").toLowerCase()}_snapshot_${i}.jpg` : `clip_${at(incidents, i).id.toLowerCase()}.mp4`,
   kind: (i % 2 ? "Snapshot" : "Video") as "Snapshot" | "Video",
   time: at(incidents, i).time, hash: hex(i + 7), verified: i % 4 !== 3,
 }));
+
+// Global subscription for real-time evidence updates
+type EvidenceListener = (items: EvidenceItem[]) => void;
+const evidenceListeners = new Set<EvidenceListener>();
+
+export const subscribeEvidence = (listener: EvidenceListener) => {
+  evidenceListeners.add(listener);
+  return () => {
+    evidenceListeners.delete(listener);
+  };
+};
+
+export function logViolenceEvidence(params: {
+  incidentId?: string | undefined;
+  source?: string | undefined;
+  snapshotData?: string | undefined;
+  description?: string | undefined;
+  severity?: Severity | undefined;
+  hash?: string | undefined;
+}): EvidenceItem {
+  const incId = params.incidentId || `INC-${2042 + evidence.length}`;
+  const now = new Date();
+  const timeStr = `${now.toISOString().slice(0, 10)} ${now.toTimeString().slice(0, 8)}`;
+  const id = `EV-${3382 + evidence.length}`;
+  const file = `cam_violence_snapshot_${Date.now().toString().slice(-4)}.jpg`;
+  
+  // Calculate SHA-256 hash or deterministic fallback
+  const computedHash =
+    params.hash ||
+    computeIncidentHashSync({
+      id: incId,
+      time: timeStr,
+      type: "Physical Violence Detected",
+      source: params.source || "CAM-014 Lobby",
+      severity: params.severity || "Critical",
+      description: params.description || "Automated AI detection identified violent struggle or physical altercation.",
+      prevHash: incidents[0]?.hash || "0000000000000000000000000000000000000000000000000000000000000000",
+    });
+
+  const newEvidence: EvidenceItem = {
+    id,
+    incident: incId,
+    file,
+    kind: "Snapshot",
+    time: timeStr,
+    hash: computedHash,
+    verified: true,
+    snapshotData: params.snapshotData,
+    tags: ["AI Detection", "Violence Alert", "Chain of Custody"],
+  };
+
+  evidence.unshift(newEvidence);
+
+  // Synchronize with incidents feed
+  const existingInc = incidents.find((i) => i.id === incId);
+  if (!existingInc) {
+    const prevHash = incidents[0]?.hash || "0000000000000000000000000000000000000000000000000000000000000000";
+    const newInc: Incident = {
+      id: incId,
+      time: timeStr,
+      type: "Physical Violence Detected",
+      kind: "Physical",
+      source: params.source || "CAM-014 Lobby",
+      risk: 96,
+      severity: params.severity || "Critical",
+      status: "Open",
+      description: params.description || "Automated AI detection identified violent struggle or physical altercation.",
+      hash: computedHash,
+      prevHash,
+      signature: `ED25519-SIG-${computedHash.slice(0, 16)}...${computedHash.slice(-8)}`,
+      evidenceRef: id,
+      tampered: false,
+    };
+    incidents.unshift(newInc);
+  }
+
+  // Notify active listeners
+  evidenceListeners.forEach((fn) => fn([...evidence]));
+
+  return newEvidence;
+}
 
 export const auditLogs = Array.from({ length: 30 }, (_, i) => ({
   time: `2026-11-01 ${String(16 - Math.floor(i / 5)).padStart(2, "0")}:${String((59 - i * 7 + 600) % 60).padStart(2, "0")}:${String((i * 31) % 60).padStart(2, "0")}`,

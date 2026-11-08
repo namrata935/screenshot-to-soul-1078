@@ -73,7 +73,7 @@ describe("Threat Model Integration", () => {
     expect(res.label).toBe("THREAT DETECTED");
     expect(res.severity).toBe("Critical");
     expect(res.incidentsCount).toBe(1);
-    expect(res.incidents?.[0].type).toBe("fall_detected");
+    expect(res.incidents?.[0]?.type).toBe("fall_detected");
     expect(res.objects?.length).toBe(2);
   });
 
