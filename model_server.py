@@ -12,17 +12,22 @@ os.environ.setdefault("KERAS_HOME", "/tmp/.keras")
 os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/.ultralytics")
 os.environ.setdefault("MPLCONFIGDIR", "/tmp")
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from PIL import Image
 import numpy as np
 import cv2
 
+import vms_db
 from ai_engine.cctv_ai_pipeline import CCTVThreatEngine
 from ai_engine.training.evaluate import get_model_performance_metrics
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("model_server")
+
+# Auto-initialize local SQLite database
+vms_db.seed_db_if_empty()
+logger.info(f"[+] Local SQLite Database active: {vms_db.DB_FILE}")
 
 LOCAL_KERAS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cctvmodel.keras")
 DOWNLOADS_KERAS = "/Users/namratasrinivasa/Downloads/cctvmodel.keras"
@@ -98,6 +103,42 @@ def model_metrics():
     return jsonify(get_model_performance_metrics())
 
 
+# --- Local SQLite Database Endpoints ---
+
+@app.route("/api/db/summary", methods=["GET"])
+def get_db_summary():
+    """Returns statistics and size of the local SQLite .db file."""
+    return jsonify(vms_db.get_db_summary())
+
+
+@app.route("/api/db/incidents", methods=["GET", "POST"])
+def db_incidents_endpoint():
+    """Query all incidents from the local .db or insert a new incident."""
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        inserted = vms_db.insert_incident(data)
+        return jsonify({"status": "success", "incident": inserted})
+    return jsonify(vms_db.get_all_incidents())
+
+
+@app.route("/api/db/evidence", methods=["GET", "POST"])
+def db_evidence_endpoint():
+    """Query all evidence vault records from the local .db or insert new artifact."""
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        inserted = vms_db.insert_evidence(data)
+        return jsonify({"status": "success", "evidence": inserted})
+    return jsonify(vms_db.get_all_evidence())
+
+
+@app.route("/api/db/download", methods=["GET"])
+def download_db_file():
+    """Allows downloading the local SQLite .db file directly."""
+    if os.path.exists(vms_db.DB_FILE):
+        return send_file(vms_db.DB_FILE, as_attachment=True, download_name="vms_security.db")
+    return jsonify({"error": "Database file not found"}), 404
+
+
 @app.route("/api/model/predict", methods=["POST"])
 def predict():
     """
@@ -118,6 +159,36 @@ def predict():
         keras_res = result.get("kerasResult") or {}
         raw_score = keras_res.get("rawScore", 0.0)
         confidence = keras_res.get("confidence", 0.5)
+
+        # Auto-persist incident and snapshot to local SQLite .db if threat detected
+        if result.get("isThreat") or result.get("incidents"):
+            inc_id = f"INC-{int(time.time())}"
+            annotated_b64 = result.get("annotatedFrame")
+            first_inc = result["incidents"][0] if result.get("incidents") else {}
+            
+            vms_db.insert_incident({
+                "id": inc_id,
+                "type": first_inc.get("type", result.get("threatType", "Physical Violence")),
+                "kind": "Physical",
+                "source": "CAM-014 Lobby",
+                "severity": result.get("severity", "High"),
+                "risk": int(result.get("maxSeverityScore", 85)),
+                "status": "Open",
+                "description": result.get("threatType", "Automated threat detected"),
+                "evidenceRef": f"EV-{int(time.time() * 1000) % 100000}"
+            })
+
+            if annotated_b64:
+                vms_db.insert_evidence({
+                    "id": f"EV-{int(time.time() * 1000) % 100000}",
+                    "incident": inc_id,
+                    "file": f"violence_seq_{inc_id.lower()}.jpg",
+                    "kind": "Snapshot",
+                    "snapshotData": annotated_b64,
+                    "tags": ["AI Detection", "Violence Altercation", "SQLite Archive"]
+                })
+
+        # Merge backwards-compatible fields with new multi-modal fields
 
         # Merge backwards-compatible fields with new multi-modal fields
         return jsonify({
@@ -161,6 +232,34 @@ def analyze_single_frame():
     try:
         cv2_frame = decode_base64_to_cv2(frame_b64)
         result = engine.analyze_frame(cv2_frame, return_annotated=True, conf_threshold=conf_threshold)
+
+        # If live single frame flags violence or high threat, persist to local SQLite .db
+        if result.get("hasIncident") and result.get("incidents"):
+            violence_inc = next(
+                (i for i in result["incidents"] if "violence" in i.get("type", "") or "attack" in i.get("type", "")),
+                result["incidents"][0]
+            )
+            if violence_inc and result.get("annotatedFrame"):
+                inc_id = f"INC-{int(time.time())}"
+                vms_db.insert_incident({
+                    "id": inc_id,
+                    "type": violence_inc.get("type", "Live Threat"),
+                    "kind": "Physical",
+                    "source": "CAM-014 Lobby (Live)",
+                    "severity": violence_inc.get("severity", "High"),
+                    "risk": int(violence_inc.get("severityScore", 80)),
+                    "status": "Open",
+                    "description": violence_inc.get("description", "Live single frame incident"),
+                    "evidenceRef": f"EV-{int(time.time() * 1000) % 100000}"
+                })
+                vms_db.insert_evidence({
+                    "file": f"live_threat_{int(time.time())}.jpg",
+                    "incident": inc_id,
+                    "kind": "Snapshot",
+                    "snapshotData": result.get("annotatedFrame"),
+                    "tags": ["Live Detection", "Auto Stored", "SQLite .db"]
+                })
+
         return jsonify(result)
     except Exception as e:
         logger.error(f"Single frame analysis error: {e}", exc_info=True)

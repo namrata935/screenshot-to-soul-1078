@@ -34,7 +34,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { pageHead } from "@/lib/meta";
-import { logViolenceEvidence, type EvidenceItem, type Severity } from "@/lib/mock-data";
+import {
+  logViolenceEvidence,
+  subscribeEvidence,
+  evidence,
+  type EvidenceItem,
+  type Severity,
+} from "@/lib/mock-data";
 import {
   checkModelServer,
   runModelPrediction,
@@ -75,7 +81,17 @@ function AiAnalysis() {
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
   const [threshold, setThreshold] = useState<number>(0.5);
   const [activeTab, setActiveTab] = useState<string>("webcam");
-  const [liveEvidenceList, setLiveEvidenceList] = useState<EvidenceItem[]>([]);
+  const [liveEvidenceList, setLiveEvidenceList] = useState<EvidenceItem[]>(() =>
+    evidence.filter((e) => e.snapshotData || e.tags?.includes("AI Detection") || e.tags?.includes("Violence Alert"))
+  );
+
+  useEffect(() => {
+    return subscribeEvidence((newItems) => {
+      setLiveEvidenceList(
+        newItems.filter((e) => e.snapshotData || e.tags?.includes("AI Detection") || e.tags?.includes("Violence Alert"))
+      );
+    });
+  }, []);
 
   const [modelStatus, setModelStatus] = useState<ModelStatus>({
     status: "offline",

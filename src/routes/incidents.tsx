@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Search,
@@ -12,10 +12,17 @@ import {
   History,
   AlertTriangle,
   RotateCcw,
+  Database,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Panel, SeverityBadge } from "@/components/vms/ui";
-import { incidents as seed, type Incident, type EventKind } from "@/lib/mock-data";
+import {
+  incidents as seed,
+  type Incident,
+  type EventKind,
+  saveIncidents,
+  syncWithBackendDb,
+} from "@/lib/mock-data";
 import { verifyIncidentIntegrity, computeIncidentHashSync } from "@/lib/incident-crypto";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -74,9 +81,16 @@ export function Incidents() {
     });
   }, [data, q, kind, sev, integrityFilter]);
 
+  useEffect(() => {
+    setData(seed);
+    syncWithBackendDb();
+  }, []);
+
   const update = (status: Incident["status"]) => {
     if (!sel) return;
-    setData((d) => d.map((i) => (i.id === sel.id ? { ...i, status } : i)));
+    const next = data.map((i) => (i.id === sel.id ? { ...i, status } : i));
+    setData(next);
+    saveIncidents(next);
     setSel({ ...sel, status });
     toast.success(`${sel.id} marked ${status}`);
   };
@@ -141,7 +155,9 @@ export function Incidents() {
       toast.success(`${sel.id}: Cryptographic integrity restored to valid state.`);
     }
 
-    setData((prev) => prev.map((item) => (item.id === sel.id ? updatedIncident : item)));
+    const next = data.map((item) => (item.id === sel.id ? updatedIncident : item));
+    setData(next);
+    saveIncidents(next);
     setSel(updatedIncident);
   };
 
@@ -149,7 +165,12 @@ export function Incidents() {
     <>
       <PageHeader
         title="Live Incidents"
-        subtitle={`${rows.length} incidents match current filters · SHA-256 Immutable Audit Ledger`}
+        subtitle={`${rows.length} incidents match current filters · SHA-256 Ledger · Stored in vms_security.db`}
+        actions={
+          <span className="inline-flex items-center gap-1.5 rounded border border-cyan/40 bg-cyan/10 px-2.5 py-1 font-mono text-xs text-cyan">
+            <Database className="size-3.5" /> SQLite: vms_security.db
+          </span>
+        }
       />
 
       <Panel>

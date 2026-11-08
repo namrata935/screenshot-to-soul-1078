@@ -1,9 +1,19 @@
 import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ShieldCheck, Download, Film, ImageIcon, Loader2, ShieldX, Sparkles, Layers } from "lucide-react";
+import {
+  ShieldCheck,
+  Download,
+  Film,
+  ImageIcon,
+  Loader2,
+  ShieldX,
+  Sparkles,
+  Layers,
+  Database,
+} from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Panel, VideoPlaceholder } from "@/components/vms/ui";
-import { evidence, subscribeEvidence, type EvidenceItem } from "@/lib/mock-data";
+import { evidence, subscribeEvidence, syncWithBackendDb, type EvidenceItem } from "@/lib/mock-data";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { pageHead } from "@/lib/meta";
@@ -11,7 +21,7 @@ import { pageHead } from "@/lib/meta";
 export const Route = createFileRoute("/evidence")({
   head: pageHead(
     "Digital Evidence Vault",
-    "Tamper-evident snapshots and clips with SHA-256 integrity verification."
+    "Tamper-evident snapshots and clips with SHA-256 integrity verification stored in local SQLite database."
   ),
   component: Evidence,
 });
@@ -23,6 +33,8 @@ function Evidence() {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
+    setItems(evidence);
+    syncWithBackendDb();
     return subscribeEvidence((newItems) => {
       setItems(newItems);
       if (newItems.length > 0 && newItems[0]) {
@@ -42,11 +54,48 @@ function Evidence() {
     }, 1200);
   };
 
+  const handleDownloadDb = async () => {
+    try {
+      const res = await fetch("http://localhost:5005/api/db/download");
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "vms_security.db";
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success("Downloaded vms_security.db from local server");
+        return;
+      }
+    } catch {
+      // Server offline fallback
+    }
+    toast.info("Database stored locally at: vms_security.db in workspace root", {
+      description: "Query directly using: sqlite3 vms_security.db",
+    });
+  };
+
   return (
     <>
       <PageHeader
         title="Digital Evidence Vault"
-        subtitle="Immutable forensic artifacts · SHA-256 chain of custody"
+        subtitle="Immutable forensic artifacts · SHA-256 chain of custody · Stored in vms_security.db"
+        actions={
+          <div className="flex items-center gap-2">
+            <span className="hidden sm:inline-flex items-center gap-1.5 rounded border border-primary/40 bg-primary/10 px-2.5 py-1 font-mono text-xs text-primary">
+              <Database className="size-3.5" /> vms_security.db
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadDb}
+              className="text-xs gap-1.5 font-mono"
+            >
+              <Download className="size-3.5" /> Export .db
+            </Button>
+          </div>
+        }
       />
       <div className="grid gap-4 xl:grid-cols-3">
         <Panel className="xl:col-span-2">

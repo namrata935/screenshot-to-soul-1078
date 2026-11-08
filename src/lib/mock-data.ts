@@ -25,6 +25,30 @@ export interface Incident {
   tampered?: boolean | undefined;
 }
 
+const STORAGE_KEY_INCIDENTS = "vms_persisted_incidents_v1";
+const STORAGE_KEY_EVIDENCE = "vms_persisted_evidence_v1";
+
+function getLocalStorageItem(key: string): string | null {
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      return window.localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function setLocalStorageItem(key: string, value: string): void {
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.setItem(key, value);
+    } catch {
+      // Ignore quota errors if storage full
+    }
+  }
+}
+
 const types: [string, EventKind, string][] = [
   ["Violence Detected", "Physical", "CAM-014 Lobby"],
   ["Brute-force Login", "Cyber", "10.0.4.22"],
@@ -42,7 +66,7 @@ const statuses: Incident["status"][] = ["Open", "Investigating", "Resolved"];
 
 let runningPrevHash = "0000000000000000000000000000000000000000000000000000000000000000";
 
-export const incidents: Incident[] = Array.from({ length: 24 }, (_, i) => {
+export const defaultIncidents: Incident[] = Array.from({ length: 24 }, (_, i) => {
   const [type, kind, source] = at(types, i);
   const risk = Math.max(12, at(risks, i) - Math.floor(i / 10) * 9);
   const m = 59 - i * 2;
@@ -72,6 +96,23 @@ export const incidents: Incident[] = Array.from({ length: 24 }, (_, i) => {
     tampered: false,
   };
 });
+
+function initPersistedIncidents(): Incident[] {
+  const stored = getLocalStorageItem(STORAGE_KEY_INCIDENTS);
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    } catch {
+      // fallback
+    }
+  }
+  return [...defaultIncidents];
+}
+
+export const incidents: Incident[] = initPersistedIncidents();
 
 export interface Camera { id: string; name: string; location: string; online: boolean; source: "Webcam" | "RTSP"; fps: number }
 export const cameras: Camera[] = [
@@ -172,12 +213,51 @@ export interface EvidenceItem {
   tags?: string[] | undefined;
 }
 
-export const evidence: EvidenceItem[] = Array.from({ length: 10 }, (_, i) => ({
-  id: `EV-${3381 - i}`, incident: at(incidents, i).id,
-  file: i % 2 ? `${(at(incidents, i).source.split(" ")[0] ?? "cam").toLowerCase()}_snapshot_${i}.jpg` : `clip_${at(incidents, i).id.toLowerCase()}.mp4`,
+export const defaultEvidence: EvidenceItem[] = Array.from({ length: 10 }, (_, i) => ({
+  id: `EV-${3381 - i}`, incident: at(defaultIncidents, i).id,
+  file: i % 2 ? `${(at(defaultIncidents, i).source.split(" ")[0] ?? "cam").toLowerCase()}_snapshot_${i}.jpg` : `clip_${at(defaultIncidents, i).id.toLowerCase()}.mp4`,
   kind: (i % 2 ? "Snapshot" : "Video") as "Snapshot" | "Video",
-  time: at(incidents, i).time, hash: hex(i + 7), verified: i % 4 !== 3,
+  time: at(defaultIncidents, i).time, hash: hex(i + 7), verified: i % 4 !== 3,
 }));
+
+function initPersistedEvidence(): EvidenceItem[] {
+  const stored = getLocalStorageItem(STORAGE_KEY_EVIDENCE);
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    } catch {
+      // fallback
+    }
+  }
+  return [...defaultEvidence];
+}
+
+export const evidence: EvidenceItem[] = initPersistedEvidence();
+
+export function saveIncidents(items: Incident[]) {
+  setLocalStorageItem(STORAGE_KEY_INCIDENTS, JSON.stringify(items));
+}
+
+export function saveEvidence(items: EvidenceItem[]) {
+  setLocalStorageItem(STORAGE_KEY_EVIDENCE, JSON.stringify(items));
+}
+
+export function resetToFactoryDefaults() {
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.removeItem(STORAGE_KEY_INCIDENTS);
+      window.localStorage.removeItem(STORAGE_KEY_EVIDENCE);
+    } catch {}
+  }
+  incidents.length = 0;
+  incidents.push(...defaultIncidents);
+  evidence.length = 0;
+  evidence.push(...defaultEvidence);
+  evidenceListeners.forEach((fn) => fn([...evidence]));
+}
 
 // Global subscription for real-time evidence updates
 type EvidenceListener = (items: EvidenceItem[]) => void;
@@ -230,6 +310,7 @@ export function logViolenceEvidence(params: {
   };
 
   evidence.unshift(newEvidence);
+  saveEvidence(evidence);
 
   // Synchronize with incidents feed
   const existingInc = incidents.find((i) => i.id === incId);
@@ -252,12 +333,63 @@ export function logViolenceEvidence(params: {
       tampered: false,
     };
     incidents.unshift(newInc);
+    saveIncidents(incidents);
+  }
+
+  // Also sync to local SQLite vms_security.db via model_server if online
+  if (typeof window !== "undefined") {
+    fetch("http://localhost:5005/api/db/evidence", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newEvidence),
+    }).catch(() => {});
+
+    if (!existingInc) {
+      fetch("http://localhost:5005/api/db/incidents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(incidents[0]),
+      }).catch(() => {});
+    }
   }
 
   // Notify active listeners
   evidenceListeners.forEach((fn) => fn([...evidence]));
 
   return newEvidence;
+}
+
+export function syncWithBackendDb(): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  return Promise.all([
+    fetch("http://localhost:5005/api/db/evidence")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          data.forEach((dbItem) => {
+            if (!evidence.some((e) => e.id === dbItem.id)) {
+              evidence.unshift(dbItem);
+            }
+          });
+          saveEvidence(evidence);
+          evidenceListeners.forEach((fn) => fn([...evidence]));
+        }
+      })
+      .catch(() => {}),
+    fetch("http://localhost:5005/api/db/incidents")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          data.forEach((dbInc) => {
+            if (!incidents.some((i) => i.id === dbInc.id)) {
+              incidents.unshift(dbInc);
+            }
+          });
+          saveIncidents(incidents);
+        }
+      })
+      .catch(() => {}),
+  ]).then(() => {});
 }
 
 export const auditLogs = Array.from({ length: 30 }, (_, i) => ({
