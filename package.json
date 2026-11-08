@@ -12,7 +12,8 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "model:serve": "KERAS_HOME=/tmp/.keras /Library/Frameworks/Python.framework/Versions/3.12/bin/python3 model_server.py"
+    "model:serve": "KERAS_HOME=/tmp/.keras YOLO_CONFIG_DIR=/tmp/.ultralytics MPLCONFIGDIR=/tmp /Library/Frameworks/Python.framework/Versions/3.12/bin/python3 model_server.py",
+    "ai:serve": "KERAS_HOME=/tmp/.keras YOLO_CONFIG_DIR=/tmp/.ultralytics MPLCONFIGDIR=/tmp /Library/Frameworks/Python.framework/Versions/3.12/bin/python3 model_server.py"
   },
   "overrides": {
     "rolldown": "1.2.1"

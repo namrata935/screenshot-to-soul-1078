@@ -1,14 +1,40 @@
+export interface IncidentItem {
+  type: string;
+  severity: "Critical" | "High" | "Medium" | "Low";
+  severityScore: number;
+  confidence: number;
+  description: string;
+  camera_id?: string;
+  timestamp?: number;
+  bbox?: number[];
+  object_id?: string;
+}
+
+export interface DetectedObject {
+  bbox: [number, number, number, number];
+  conf: number;
+  class: number;
+  class_name: string;
+}
+
+export interface DetectedPose {
+  keypoints: [number, number, number][];
+  conf: number;
+  num_keypoints: number;
+  bbox: [number, number, number, number];
+}
+
 export interface ModelStatus {
   status: "online" | "offline" | "error";
   modelName: string;
   modelPath?: string;
-  inputShape?: number[];
-  architecture?: string;
-  labels?: {
-    threat: string;
-    normal: string;
-  };
   ready: boolean;
+  models?: {
+    yolo?: { name: string; ready: boolean; classes: string; device: string };
+    pose?: { name: string; ready: boolean; landmarks: number };
+    kerasLstm?: { name: string; ready: boolean; architecture: string };
+    incidentEngine?: { ready: boolean; capabilities: string[] };
+  };
 }
 
 export interface PredictionResult {
@@ -19,10 +45,31 @@ export interface PredictionResult {
   confidence: number;
   rawScore: number;
   threshold: number;
+  severity?: "Critical" | "High" | "Medium" | "Low";
+  maxSeverityScore?: number;
   processingTimeMs: number;
   framesProcessed: number;
   sampledFrames: number;
   model: string;
+  incidents?: IncidentItem[];
+  incidentsCount?: number;
+  objects?: DetectedObject[];
+  poses?: DetectedPose[];
+  annotatedFrame?: string;
+  message?: string;
+}
+
+export interface SingleFrameResult {
+  status: "success" | "warning" | "error";
+  frameNumber?: number;
+  processingTimeMs: number;
+  objectsCount: number;
+  objects: DetectedObject[];
+  posesCount: number;
+  poses: DetectedPose[];
+  incidents: IncidentItem[];
+  hasIncident: boolean;
+  annotatedFrame?: string;
   message?: string;
 }
 
@@ -30,6 +77,24 @@ const SERVER_URLS = [
   "/api/model",
   "http://127.0.0.1:5005/api/model",
   "http://localhost:5005/api/model",
+  "http://127.0.0.1:5006/api/model",
+  "http://localhost:5006/api/model",
+  "http://127.0.0.1:5007/api/model",
+  "http://localhost:5007/api/model",
+  "http://127.0.0.1:5008/api/model",
+  "http://localhost:5008/api/model",
+];
+
+const AI_URLS = [
+  "/api/ai",
+  "http://127.0.0.1:5005/api/ai",
+  "http://localhost:5005/api/ai",
+  "http://127.0.0.1:5006/api/ai",
+  "http://localhost:5006/api/ai",
+  "http://127.0.0.1:5007/api/ai",
+  "http://localhost:5007/api/ai",
+  "http://127.0.0.1:5008/api/ai",
+  "http://localhost:5008/api/ai",
 ];
 
 export async function checkModelServer(): Promise<ModelStatus> {
@@ -37,18 +102,16 @@ export async function checkModelServer(): Promise<ModelStatus> {
     try {
       const res = await fetch(`${baseUrl}/status`, {
         method: "GET",
-        signal: AbortSignal.timeout(1500),
+        signal: AbortSignal.timeout(2000),
       });
       if (res.ok) {
         const data = await res.json();
         return {
           status: "online",
-          modelName: data.modelName || "cctvmodel.keras",
+          modelName: data.modelName || "CCTV Threat Multi-Model Suite",
           modelPath: data.modelPath,
-          inputShape: data.inputShape,
-          architecture: data.architecture,
-          labels: data.labels,
-          ready: true,
+          ready: Boolean(data.ready),
+          models: data.models,
         };
       }
     } catch {
@@ -58,7 +121,7 @@ export async function checkModelServer(): Promise<ModelStatus> {
 
   return {
     status: "offline",
-    modelName: "cctvmodel.keras",
+    modelName: "CCTV Multi-Detection Suite",
     ready: false,
   };
 }
@@ -75,7 +138,7 @@ export async function runModelPrediction(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ frames, threshold }),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(45000),
       });
 
       if (res.ok) {
@@ -87,12 +150,46 @@ export async function runModelPrediction(
     }
   }
 
-  throw lastError || new Error("Failed to connect to CCTV model server");
+  throw lastError || new Error("Failed to connect to CCTV AI model server");
+}
+
+export async function analyzeLiveFrame(
+  frameBase64: string,
+  confThreshold = 0.35,
+): Promise<SingleFrameResult> {
+  for (const baseUrl of AI_URLS) {
+    try {
+      const res = await fetch(`${baseUrl}/analyze-frame`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ frame: frameBase64, confThreshold }),
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (res.ok) {
+        return (await res.json()) as SingleFrameResult;
+      }
+    } catch {
+      // Continue to next URL
+    }
+  }
+
+  throw new Error("Live frame analysis unavailable");
+}
+
+export async function resetAiEngine(): Promise<void> {
+  for (const baseUrl of AI_URLS) {
+    try {
+      await fetch(`${baseUrl}/reset`, { method: "POST" });
+      return;
+    } catch {
+      // Continue
+    }
+  }
 }
 
 /**
- * Captures an array of base64 frames (128x128 JPEG) from a live webcam HTMLVideoElement
- * over a given duration (e.g. 15 frames over 1500ms).
+ * Captures an array of base64 frames (640x480 or native aspect ratio) from a live webcam
  */
 export async function captureWebcamSequence(
   video: HTMLVideoElement,
@@ -101,15 +198,17 @@ export async function captureWebcamSequence(
   onProgress?: (current: number, total: number) => void,
 ): Promise<string[]> {
   const canvas = document.createElement("canvas");
-  canvas.width = 128;
-  canvas.height = 128;
+  const w = video.videoWidth || 640;
+  const h = video.videoHeight || 480;
+  canvas.width = Math.min(640, w);
+  canvas.height = Math.round(canvas.width * (h / w));
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("Could not initialize canvas context");
 
   const frames: string[] = [];
 
   for (let i = 0; i < count; i++) {
-    ctx.drawImage(video, 0, 0, 128, 128);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     frames.push(canvas.toDataURL("image/jpeg", 0.85));
     if (onProgress) onProgress(i + 1, count);
     if (i < count - 1) {
@@ -129,8 +228,10 @@ export async function extractFramesFromVideoElement(
   onProgress?: (current: number, total: number) => void,
 ): Promise<string[]> {
   const canvas = document.createElement("canvas");
-  canvas.width = 128;
-  canvas.height = 128;
+  const w = video.videoWidth || 640;
+  const h = video.videoHeight || 480;
+  canvas.width = Math.min(640, w);
+  canvas.height = Math.round(canvas.width * (h / w));
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("Could not initialize canvas context");
 
@@ -152,15 +253,13 @@ export async function extractFramesFromVideoElement(
     for (let i = 0; i < count; i++) {
       const targetTime = ((i + 0.5) / count) * duration;
       await seekTo(targetTime);
-      ctx.drawImage(video, 0, 0, 128, 128);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       frames.push(canvas.toDataURL("image/jpeg", 0.85));
       if (onProgress) onProgress(i + 1, count);
     }
   } finally {
-    // Restore original video position
     video.currentTime = originalTime;
   }
 
   return frames;
 }
-
