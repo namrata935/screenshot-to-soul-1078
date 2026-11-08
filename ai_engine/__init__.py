@@ -8,7 +8,15 @@ Integrated from ai-cctv-threat-detection:
 - Multi-Threat Incident Detector (Attacks, Falls, Intrusions, Thefts, Violence)
 - Severity Risk Scorer
 - TimeDistributed + LSTM Deep Learning Violence Classifier (cctvmodel.keras)
+- Model Training & Evaluation Suite (Behavior, Pose, YOLO, Metrics)
 """
 
-__version__ = "2.0.0"
+from . import models
+from . import inference
+from . import utils
+from . import data
+from . import training
+
+__version__ = "2.1.0"
+__all__ = ["models", "inference", "utils", "data", "training"]
 

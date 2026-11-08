@@ -361,7 +361,11 @@ function AiAnalysis() {
           </div>
           <div>
             <div className="font-semibold text-foreground">YOLOv8 Objects</div>
-            <div className="text-[11px] text-muted-foreground">Persons, Valuables, Bags</div>
+            <div className="text-[11px] text-muted-foreground">
+              {modelStatus.metrics?.detector_mAP50
+                ? `mAP@0.5: ${(modelStatus.metrics.detector_mAP50 * 100).toFixed(0)}%`
+                : "Persons, Valuables, Bags"}
+            </div>
           </div>
         </div>
 
@@ -391,7 +395,11 @@ function AiAnalysis() {
           </div>
           <div>
             <div className="font-semibold text-foreground">LSTM Sequence</div>
-            <div className="text-[11px] text-muted-foreground">cctvmodel.keras Violence</div>
+            <div className="text-[11px] text-muted-foreground">
+              {modelStatus.metrics?.accuracy
+                ? `Accuracy: ${(modelStatus.metrics.accuracy * 100).toFixed(1)}%`
+                : "cctvmodel.keras Violence"}
+            </div>
           </div>
         </div>
       </div>

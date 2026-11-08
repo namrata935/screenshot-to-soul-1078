@@ -19,6 +19,7 @@ import numpy as np
 import cv2
 
 from ai_engine.cctv_ai_pipeline import CCTVThreatEngine
+from ai_engine.training.evaluate import get_model_performance_metrics
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("model_server")
@@ -85,9 +86,16 @@ def model_status():
                 ]
             }
         },
+        "metrics": get_model_performance_metrics(),
         "modelName": "CCTV Threat Multi-Model Suite (YOLOv8 + MediaPipe + cctvmodel.keras)",
         "targetFps": 15
     })
+
+
+@app.route("/api/model/metrics", methods=["GET"])
+def model_metrics():
+    """Returns validation metrics computed from ai_engine.training.evaluate."""
+    return jsonify(get_model_performance_metrics())
 
 
 @app.route("/api/model/predict", methods=["POST"])

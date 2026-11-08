@@ -24,11 +24,23 @@ export interface DetectedPose {
   bbox: [number, number, number, number];
 }
 
+export interface ModelMetrics {
+  accuracy?: number;
+  f1_score?: number;
+  precision?: number;
+  recall?: number;
+  auc_roc?: number;
+  detector_mAP50?: number;
+  detector_precision?: number;
+  detector_recall?: number;
+}
+
 export interface ModelStatus {
   status: "online" | "offline" | "error";
   modelName: string;
   modelPath?: string;
   ready: boolean;
+  metrics?: ModelMetrics;
   models?: {
     yolo?: { name: string; ready: boolean; classes: string; device: string };
     pose?: { name: string; ready: boolean; landmarks: number };
@@ -112,6 +124,7 @@ export async function checkModelServer(): Promise<ModelStatus> {
           modelPath: data.modelPath,
           ready: Boolean(data.ready),
           models: data.models,
+          metrics: data.metrics,
         };
       }
     } catch {
