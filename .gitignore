@@ -28,6 +28,7 @@ venv/
 # Local secrets / analytics DB
 .env
 cyber_analytics/.env
+*.pt
 
 # Wrangler / Cloudflare
 .wrangler/
