@@ -78,12 +78,32 @@ class SecurityEventMiddleware(BaseHTTPMiddleware):
     """Logs platform (not video-content) events after each matching response."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        body = await request.body()
+        path = request.url.path
+        method = request.method.upper()
 
-        async def receive() -> dict[str, Any]:
-            return {"type": "http.request", "body": body, "more_body": False}
+        # Fast path: bypass for OPTIONS preflights, health, alerts, graph, and docs
+        if (
+            method == "OPTIONS"
+            or path == "/health"
+            or path.startswith("/api/v1/alerts")
+            or path.startswith("/api/v1/graph")
+            or path.startswith("/api/v1/signals")
+            or path in ("/docs", "/openapi.json", "/redoc")
+        ):
+            return await call_next(request)
 
-        request = Request(request.scope, receive)
+        body = b""
+        # Only read body if method has payload and path matches a monitored mutating route
+        is_monitored_post = method in ("POST", "PUT", "PATCH") and any(
+            p.match(path) for p, m, _ in _ROUTE_RULES if m == method
+        )
+
+        if is_monitored_post:
+            body = await request.body()
+            async def receive() -> dict[str, Any]:
+                return {"type": "http.request", "body": body, "more_body": False}
+            request = Request(request.scope, receive)
+
         response = await call_next(request)
 
         event_type = _classify(request, response.status_code)

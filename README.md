@@ -38,6 +38,16 @@ This service watches the VMS itself (logins, video access, camera heartbeats). I
 | `DATABASE_URL` | SQLAlchemy URL (PostgreSQL). Default in Compose: `postgresql+psycopg://vms:vms@postgres:5432/cyber_analytics` |
 | `CYBER_HMAC_SECRET` | HMAC key used to pseudonymize IP addresses in `security_events` |
 | `CYBER_ADMIN_API_KEY` | Sent as `X-Admin-Key` for admin-only reads |
+| `RULE_BRUTE_FORCE_THRESHOLD` | Max failed logins before alerting (default: `5`) |
+| `RULE_BRUTE_FORCE_WINDOW_SECONDS` | Sliding window for brute force detection in seconds (default: `60`) |
+| `RULE_CREDENTIAL_STUFFING_THRESHOLD_USERNAMES` | Distinct accounts targeted before alerting (default: `3`) |
+| `RULE_CREDENTIAL_STUFFING_WINDOW_SECONDS` | Sliding window for credential stuffing in seconds (default: `120`) |
+| `RULE_IMPOSSIBLE_ACCESS_WINDOW_SECONDS` | Window for concurrent logins from different IPs in seconds (default: `300`) |
+| `RULE_MASS_EXPORT_THRESHOLD` | Video views/downloads threshold before alerting (default: `10`) |
+| `RULE_MASS_EXPORT_WINDOW_SECONDS` | Sliding window for mass export in seconds (default: `600`) |
+| `RULE_PRIVILEGE_ABUSE_THRESHOLD` | Repeated permission denied responses before alerting (default: `3`) |
+| `RULE_PRIVILEGE_ABUSE_WINDOW_SECONDS` | Sliding window for privilege abuse in seconds (default: `300`) |
+| `RULE_CAMERA_HEARTBEAT_TIMEOUT_SECONDS` | Maximum allowed silence before camera tampering alert (default: `180`) |
 
 ```sh
 docker compose up --build
@@ -48,6 +58,30 @@ python -m pip install -r requirements.txt
 alembic upgrade head
 uvicorn app.main:app --reload --port 8001
 python -m pytest
+
+# Run ML anomaly detection evaluation on realistic synthetic telemetry:
+python scripts/generate_synthetic_logs.py
 ```
+
+### ML Anomaly Detection (Phase 3)
+* **Model**: scikit-learn `IsolationForest` combined with a per-user statistical baseline (`UserBaseline`).
+* **Features**: `login_hour`, `day_of_week`, `is_new_device`, `is_new_ip`, `request_rate`, `videos_accessed_per_hour`.
+* **Output**: Normalized anomaly score $\in [0.0, 1.0]$ and human-readable explanation of contributing deviations (e.g. *"Login at 03:23, user normally active 09:00-17:00, from a never-seen device"*).
+* **Synthetic Telemetry Generator**: `scripts/generate_synthetic_logs.py` simulates normal operator/guard personas and injects off-hours compromise, mass video scraping, and rogue IP attacks to evaluate precision and recall.
+
+### Identity Graph (Phase 4)
+* **NetworkX MultiGraph Model**: Tracks `user <-> device <-> IP <-> camera` entity relationships (`USED_DEVICE`, `USED_IP`, `NETWORK_LINK`, `ACCESSED_CAMERA`).
+* **Endpoint**: `GET /api/v1/graph/identity` (requires `X-Admin-Key`)
+  * Supports `user_id` parameter to isolate an individual's operational blast radius (2-hop ego subgraph).
+  * Supports `camera_id` parameter to inspect which users, devices, and IPs interacted with a sensitive camera.
+
+### Alerts API & Threat Correlation (Phase 5)
+* **Persistent Storage**: `cyber_alerts` table in PostgreSQL with indexes on `(status, created_at)`, `(severity, created_at)`, `(rule_id, created_at)`, `(camera_id, created_at)`, `(user_id, created_at)`.
+* **Endpoints** (Admin-role only, requiring `X-Admin-Key`):
+  * `GET /api/v1/alerts`: List and filter alerts by status, severity, rule_id, user_id, or camera_id with pagination.
+  * `GET /api/v1/alerts/{alert_id}`: Fetch single alert details.
+  * `PATCH /api/v1/alerts/{alert_id}/status`: Transition status between `open`, `acknowledged`, and `resolved`.
+  * `GET /api/v1/alerts/stats/summary`: Aggregated metrics (open/ack/resolved, counts by severity, top suspicious IPs and users).
+  * `GET /api/v1/signals/correlate`: Real-time cyber signal provider (`get_cyber_signals`) for risk-scoring correlation with AI visual threat detections.
 
 Ingest an event from another service: `POST /api/v1/security-events`. Auth/video/camera hook routes under `/api/v1/auth`, `/api/v1/videos`, `/api/v1/cameras` are logged automatically by middleware.
